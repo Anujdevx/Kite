@@ -1,6 +1,6 @@
 # Lyftr AI Chat: LLM chatbot with key failover and response caching
 
-React frontend, FastAPI backend, LiteLLM gateway (key pool + built-in cache), SQLite history.
+React frontend, FastAPI backend, LiteLLM gateway (key pool + built-in cache), SQLite history. Each key can point at a different provider/model, so failover also survives a whole-provider outage.
 
 ```
 Browser (React, Vite)                 FastAPI backend                         Providers
@@ -8,8 +8,8 @@ Browser (React, Vite)                 FastAPI backend                         Pr
 │ chat-input           │ ───────────► │ validate (Pydantic) ─► 422       │
 │ assistant-message    │              │ load history (SQLite)            │
 │  meta-source/model/  │ ◄─────────── │ messages = system+history+new    │
-│  latency/tokens      │   reply +    │ for key_1..key_n:                │  key_1 ─► Gemini
-└──────────────────────┘   metadata   │   litellm.acompletion(cache on)  │  key_2 ─► Gemini
+│  latency/tokens      │   reply +    │ for key_1..key_n:                │  key_1 ─► provider A
+└──────────────────────┘   metadata   │   litellm.acompletion(cache on)  │  key_2 ─► provider B
                                       │   error? next key                │
                                       │ all failed ─► 503                │
                                       │ save user+assistant (1 txn)      │
@@ -56,7 +56,7 @@ npm run dev               # http://localhost:3000, talks to VITE_API_URL (defaul
 
 ```bash
 cd backend && python -m pytest -q
-# optional, against real Gemini with the keys in your env:
+# optional, against the real provider with the keys in your env:
 LIVE_LLM_TESTS=1 python -m pytest -q -k live
 ```
 
@@ -65,7 +65,8 @@ LIVE_LLM_TESTS=1 python -m pytest -q -k live
 | Variable | Meaning |
 |---|---|
 | `LLM_API_KEYS` | Comma-separated key pool, at least 2. Ids are `key_1`, `key_2`, ... in this order |
-| `LLM_MODEL` | LiteLLM model string, default `gemini/gemini-2.5-flash-lite` |
+| `LLM_MODELS` | Optional: one LiteLLM model per key, same order as `LLM_API_KEYS` (e.g. `groq/...,openrouter/...`). Startup fails if the counts differ |
+| `LLM_MODEL` | Model for every key when `LLM_MODELS` is empty, default `gemini/gemini-2.5-flash-lite` |
 | `DATABASE_URL` | SQLite location, e.g. `sqlite:////data/app.db` |
 | `ALLOWED_ORIGINS` | Comma-separated CORS origins |
 | `ENABLE_FAILURE_SIMULATION` | `true` enables the `X-Simulate-Failure` header |
@@ -77,7 +78,7 @@ LIVE_LLM_TESTS=1 python -m pytest -q -k live
 
 ### Key fallback
 
-`backend/app/llm.py` walks the key pool **in order** and calls `litellm.acompletion(..., api_key=key, num_retries=0)` for each key. Any provider failure moves on to the next key: LiteLLM maps provider errors to typed exceptions (`RateLimitError` for 429 and quota, `InternalServerError`, `BadGatewayError`, `ServiceUnavailableError` for 5xx, plus timeouts and auth errors). Only when every key has failed does the API return `503 {"detail": "all providers unavailable"}`. `fallback_attempts` counts the keys that failed before the one that answered.
+`backend/app/llm.py` walks the key pool **in order** and calls `litellm.acompletion(model=key_model, api_key=key, num_retries=0)` for each key. Each key carries its own model (`LLM_MODELS`), so the pool can span providers: keys on one account usually share a quota, but keys on two providers fail independently. `model` in the response is the model that actually answered. Any provider failure moves on to the next key: LiteLLM maps provider errors to typed exceptions (`RateLimitError` for 429 and quota, `InternalServerError`, `BadGatewayError`, `ServiceUnavailableError` for 5xx, plus timeouts and auth errors). Only when every key has failed does the API return `503 {"detail": "all providers unavailable"}`. `fallback_attempts` counts the keys that failed before the one that answered.
 
 - **Why `num_retries=0`:** retrying a key that just returned 429 burns time against the same exhausted quota. Moving to the next key is the retry.
 - **Why also fail over on 401 and timeouts:** a revoked or hanging key is as useless as a rate-limited one, and the user should still get an answer. This is a superset of the spec (429, quota, 5xx).
@@ -133,7 +134,7 @@ curl -s -X POST $B/chat -H 'Content-Type: application/json' -d '{"session_id":"s
 
 **In the UI:** every assistant reply shows `source`, `model`, `latency`, `in`/`out` tokens and the key that answered. Open *Session settings* and pick a value under *Failover test* to send `X-Simulate-Failure` with each message. The reply then shows `key_2 (after 1 failed)`, or an inline 503 notice for `*=429`.
 
-**Automated:** `cd backend && python -m pytest -q` covers health, response shape, cache hit (identical text, same tokens, `key_id` null, faster), cache misses for different messages and system prompts, multi-turn history sent to the LLM, history surviving an app restart, per-request tokens, failover on simulated 429/500/502/503 and on real LiteLLM `RateLimitError`, 503 with nothing written, simulation off when disabled, 422 cases (missing, empty, whitespace, over 4000 chars, malformed JSON, bad header) and the 404.
+**Automated:** `cd backend && python -m pytest -q` covers health, response shape, cache hit (identical text, same tokens, `key_id` null, faster), per-key models across providers, cache misses for different messages and system prompts, multi-turn history sent to the LLM, history surviving an app restart, per-request tokens, failover on simulated 429/500/502/503 and on real LiteLLM `RateLimitError`, 503 with nothing written, simulation off when disabled, 422 cases (missing, empty, whitespace, over 4000 chars, malformed JSON, bad header) and the 404.
 
 ## 5. Setup Used: your editor and AI tools
 
@@ -146,7 +147,8 @@ curl -s -X POST $B/chat -H 'Content-Type: application/json' -d '{"session_id":"s
 - **`key_id` and fallback count shown per reply**, plus a health badge (keys configured, cache on) in the header.
 - **Per-session system prompt** (`system-prompt-input`), stored in SQLite so later turns keep it.
 - **Failover also covers timeouts and invalid keys**, not just 429/5xx.
-- **Optional live test** against real Gemini (`LIVE_LLM_TESTS=1`).
+- **Per-key models (`LLM_MODELS`):** the pool can mix providers, so a full provider outage still fails over.
+- **Optional live test** against the real provider (`LIVE_LLM_TESTS=1`).
 
 ### Known limitations
 

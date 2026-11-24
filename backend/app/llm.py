@@ -34,6 +34,17 @@ def api_keys() -> list[str]:
     return [k.strip() for k in os.getenv("LLM_API_KEYS", "").split(",") if k.strip()]
 
 
+def key_pool() -> list[tuple[str, str, str]]:
+    """[(key_id, api_key, model)]. LLM_MODELS (optional, same order as LLM_API_KEYS) lets each
+    key use its own provider/model, e.g. key_1 on Groq and key_2 on OpenRouter; otherwise
+    every key uses LLM_MODEL."""
+    keys = api_keys()
+    models = [m.strip() for m in os.getenv("LLM_MODELS", "").split(",") if m.strip()] or [model()] * len(keys)
+    if len(models) != len(keys):
+        raise RuntimeError(f"LLM_MODELS has {len(models)} entries but LLM_API_KEYS has {len(keys)}")
+    return [(f"key_{i}", k, m) for i, (k, m) in enumerate(zip(keys, models), start=1)]
+
+
 def parse_simulation(header: str) -> dict[str, int]:
     """'key_1=429,key_2=500' -> {'key_1': 429, 'key_2': 500}; '*' means every key.
     Raises ValueError on anything malformed."""
@@ -51,8 +62,7 @@ async def complete(messages: list[dict], simulate: dict[str, int] | None = None)
     moves on to the next key; if every key fails, raise AllProvidersFailed."""
     simulate = simulate or {}
     failed = 0
-    for i, key in enumerate(api_keys(), start=1):
-        key_id = f"key_{i}"
+    for key_id, key, key_model in key_pool():
         kwargs = {}
         if simulate:
             # A failover demo must actually exercise the keys, so skip the cache *read*
@@ -63,10 +73,10 @@ async def complete(messages: list[dict], simulate: dict[str, int] | None = None)
             if status:
                 # Same exception class LiteLLM raises for a real provider 429/5xx.
                 raise SIMULATED_ERRORS[status](
-                    message=f"simulated HTTP {status}", llm_provider="simulation", model=model()
+                    message=f"simulated HTTP {status}", llm_provider="simulation", model=key_model
                 )
             resp = await litellm.acompletion(
-                model=model(),
+                model=key_model,
                 messages=messages,
                 api_key=key,
                 num_retries=0,  # failover is ours: next key, not the same key again
@@ -87,7 +97,7 @@ async def complete(messages: list[dict], simulate: dict[str, int] | None = None)
         return {
             "reply": reply,
             "resolution_source": "LLM_CACHE" if cache_hit else "LIVE_INFERENCE",
-            "model": model(),
+            "model": key_model,
             "input_tokens": resp.usage.prompt_tokens,
             "output_tokens": resp.usage.completion_tokens,
             "key_id": None if cache_hit else key_id,

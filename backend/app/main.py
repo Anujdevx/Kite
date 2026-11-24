@@ -22,7 +22,8 @@ DEFAULT_SYSTEM_PROMPT = os.getenv("DEFAULT_SYSTEM_PROMPT", "You are a helpful, c
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     db.init_db()  # schema is created on startup
-    log.info("keys configured: %d, model: %s", len(llm.api_keys()), llm.model())
+    pool = llm.key_pool()  # fails fast if LLM_MODELS and LLM_API_KEYS don't line up
+    log.info("keys configured: %s", [(key_id, m) for key_id, _, m in pool])
     yield
 
 

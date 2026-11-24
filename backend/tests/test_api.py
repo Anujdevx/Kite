@@ -205,6 +205,23 @@ def test_real_provider_5xx_on_every_key_is_503(client, fake_provider):
     assert r.status_code == 503 and r.json() == {"detail": "all providers unavailable"}
 
 
+def test_per_key_models_across_providers(client, monkeypatch):
+    monkeypatch.setenv("LLM_MODELS", "groq/llama-3.3-70b-versatile,openrouter/meta-llama/llama-3.3-70b-instruct:free")
+    first = chat(client, sid(), msg()).json()["metadata"]
+    assert (first["key_id"], first["model"]) == ("key_1", "groq/llama-3.3-70b-versatile")
+    over = chat(client, sid(), msg(), headers={"X-Simulate-Failure": "key_1=503"}).json()["metadata"]
+    assert (over["key_id"], over["model"]) == ("key_2", "openrouter/meta-llama/llama-3.3-70b-instruct:free")
+
+
+def test_mismatched_llm_models_fails_fast(monkeypatch):
+    from app import llm
+
+    monkeypatch.setenv("LLM_API_KEYS", "a,b")
+    monkeypatch.setenv("LLM_MODELS", "groq/x")
+    with pytest.raises(RuntimeError):
+        llm.key_pool()
+
+
 def test_simulation_header_ignored_when_disabled(client, monkeypatch):
     monkeypatch.setenv("ENABLE_FAILURE_SIMULATION", "false")
     r = chat(client, sid(), msg(), headers={"X-Simulate-Failure": "*=429"})

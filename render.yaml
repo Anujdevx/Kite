@@ -12,8 +12,8 @@ services:
         sync: false # you type the real keys in the Render dashboard
       - key: ALLOWED_ORIGINS
         sync: false # your Vercel URL, e.g. https://lyftr-chat.vercel.app
-      - key: LLM_MODEL
-        value: gemini/gemini-2.5-flash-lite
+      - key: LLM_MODELS
+        sync: false # one LiteLLM model per key, same order as LLM_API_KEYS
       - key: DATABASE_URL
         value: sqlite:////data/app.db
       - key: ENABLE_FAILURE_SIMULATION
