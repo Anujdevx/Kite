@@ -1,4 +1,5 @@
 """LiteLLM gateway: ordered key pool with per-request failover + LiteLLM's built-in cache."""
+import copy
 import logging
 import os
 
@@ -19,6 +20,11 @@ SIMULATED_ERRORS = {
     502: litellm.BadGatewayError,
     503: litellm.ServiceUnavailableError,
 }
+
+
+# Per-provider call options. NVIDIA's Nemotron "thinks" by default: ~1,000 hidden tokens and
+# up to 30 s per reply (measured), which can blow the per-key timeout. Thinking off: ~40 tokens, ~1 s.
+PROVIDER_KWARGS = {"nvidia_nim": {"extra_body": {"chat_template_kwargs": {"enable_thinking": False}}}}
 
 
 class AllProvidersFailed(Exception):
@@ -61,9 +67,10 @@ async def complete(messages: list[dict], simulate: dict[str, int] | None = None)
     """Try each key in order. Any provider error (429, quota, 5xx, timeout, bad key)
     moves on to the next key; if every key fails, raise AllProvidersFailed."""
     simulate = simulate or {}
-    failed = 0
+    failed = []  # [{key_id, status, error}] for keys that failed before one answered
     for key_id, key, key_model in key_pool():
-        kwargs = {}
+        # deepcopy: LiteLLM mutates extra_body in place, so never hand it the shared constant
+        kwargs = copy.deepcopy(PROVIDER_KWARGS.get(key_model.split("/")[0], {}))
         if simulate:
             # A failover demo must actually exercise the keys, so skip the cache *read*
             # (the result is still written to the cache).
@@ -88,7 +95,7 @@ async def complete(messages: list[dict], simulate: dict[str, int] | None = None)
             if not reply:
                 raise ValueError("empty reply")
         except Exception as e:  # noqa: BLE001 - every provider failure means "try the next key"
-            failed += 1
+            failed.append({"key_id": key_id, "status": getattr(e, "status_code", None), "error": type(e).__name__})
             # Log the class and status only: never the key, and never a message that might echo it.
             log.warning("%s failed: %s status=%s", key_id, type(e).__name__, getattr(e, "status_code", None))
             continue
@@ -101,6 +108,8 @@ async def complete(messages: list[dict], simulate: dict[str, int] | None = None)
             "input_tokens": resp.usage.prompt_tokens,
             "output_tokens": resp.usage.completion_tokens,
             "key_id": None if cache_hit else key_id,
-            "fallback_attempts": 0 if cache_hit else failed,
+            "fallback_attempts": 0 if cache_hit else len(failed),
+            # Extra field (allowed by the contract): the path this request took, for the UI trace.
+            "attempts": [] if cache_hit else failed,
         }
     raise AllProvidersFailed()

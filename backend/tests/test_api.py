@@ -58,7 +58,11 @@ def chat(client, session_id, message, **extra):
 def test_health(client):
     r = client.get("/health")
     assert r.status_code == 200
-    assert r.json() == {"status": "ok", "keys_configured": 2, "cache_enabled": True}
+    body = r.json()
+    assert {k: body[k] for k in ("status", "keys_configured", "cache_enabled")} == {
+        "status": "ok", "keys_configured": 2, "cache_enabled": True}
+    assert [k["key_id"] for k in body["keys"]] == ["key_1", "key_2"]
+    assert "test-key" not in r.text  # never the key itself
 
 
 def test_chat_live_inference_shape(client):
@@ -87,6 +91,7 @@ def test_same_first_message_in_new_session_is_cache_hit(client, fake_provider):
     assert hit["reply"] == live["reply"]  # identical text
     assert hit["metadata"]["key_id"] is None
     assert hit["metadata"]["fallback_attempts"] == 0
+    assert hit["metadata"]["attempts"] == []
     # tokens are the usage stored with the cached response
     assert hit["metadata"]["input_tokens"] == live["metadata"]["input_tokens"]
     assert hit["metadata"]["output_tokens"] == live["metadata"]["output_tokens"]
@@ -171,6 +176,7 @@ def test_simulated_failure_on_key_1_fails_over_to_key_2(client, status):
     meta = r.json()["metadata"]
     assert meta["key_id"] == "key_2"
     assert meta["fallback_attempts"] == 1
+    assert meta["attempts"] == [{"key_id": "key_1", "status": int(status), "error": meta["attempts"][0]["error"]}]
     assert meta["resolution_source"] == "LIVE_INFERENCE"
     assert r.json()["reply"].startswith("reply to:")  # a real answer, not an error in a 200
 
@@ -214,6 +220,24 @@ def test_per_key_models_across_providers(client, monkeypatch):
     assert (first["key_id"], first["model"]) == ("key_1", "groq/llama-3.3-70b-versatile")
     over = chat(client, sid(), msg(), headers={"X-Simulate-Failure": "key_1=503"}).json()["metadata"]
     assert (over["key_id"], over["model"]) == ("key_2", "nvidia_nim/meta/llama-3.3-70b-instruct")
+
+
+def test_nvidia_calls_turn_thinking_off(client, monkeypatch):
+    seen = {}
+    real = litellm.acompletion
+
+    async def spy(**kwargs):
+        seen[kwargs["model"]] = kwargs.get("extra_body")
+        return await real(**kwargs)
+
+    monkeypatch.setattr(litellm, "acompletion", spy)
+    monkeypatch.setenv("LLM_MODELS", "groq/openai/gpt-oss-120b,nvidia_nim/nvidia/nemotron-3.5-lightning-30b-a3b")
+    chat(client, sid(), msg(), headers={"X-Simulate-Failure": "key_1=429"})
+    chat(client, sid(), msg())
+    assert seen["nvidia_nim/nvidia/nemotron-3.5-lightning-30b-a3b"]["chat_template_kwargs"] == {"enable_thinking": False}
+    from app import llm  # the shared constant must not pick up per-call junk
+    assert llm.PROVIDER_KWARGS["nvidia_nim"]["extra_body"] == {"chat_template_kwargs": {"enable_thinking": False}}
+    assert seen["groq/openai/gpt-oss-120b"] is None
 
 
 def test_mismatched_llm_models_fails_fast(monkeypatch):

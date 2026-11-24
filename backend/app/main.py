@@ -55,10 +55,16 @@ def health():
         db.ping()
     except Exception:
         return JSONResponse(status_code=503, content={"status": "error", "detail": "database unreachable"})
-    keys = len(llm.api_keys())
-    if keys == 0:
+    pool = llm.key_pool()
+    if not pool:
         return JSONResponse(status_code=503, content={"status": "error", "detail": "no API keys configured"})
-    return {"status": "ok", "keys_configured": keys, "cache_enabled": litellm.cache is not None}
+    return {
+        "status": "ok",
+        "keys_configured": len(pool),
+        "cache_enabled": litellm.cache is not None,
+        # Extra field: key ids and models (never the keys), for the UI's key-pool rail.
+        "keys": [{"key_id": key_id, "model": model} for key_id, _, model in pool],
+    }
 
 
 @app.post("/chat")
