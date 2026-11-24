@@ -67,7 +67,7 @@ def test_chat_live_inference_shape(client):
     assert body["reply"] == "reply to: " + m
     meta = body["metadata"]
     assert meta["resolution_source"] == "LIVE_INFERENCE"
-    assert meta["model"] == "gemini/gemini-2.5-flash-lite"
+    assert meta["model"] == "gemini/gemini-2.5-flash-lite"  # LLM_MODEL default when LLM_MODELS is unset
     assert meta["key_id"] == "key_1"
     assert meta["fallback_attempts"] == 0
     for f in ("latency_ms", "input_tokens", "output_tokens"):
