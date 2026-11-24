@@ -140,7 +140,7 @@ curl -s -X POST $B/chat -H 'Content-Type: application/json' -d '{"session_id":"s
 - Every assistant reply has one quiet metadata line: `source · model · latency · in / out tokens`. A cache hit adds "Instant answer from cache"; a failover adds e.g. "Groq failed (429), answered by NVIDIA NIM". `{ }` shows the raw JSON.
 - The **provider rail** (right edge, or a strip above the chat on narrow screens) lights up whatever answered the last request: Cache amber, a failed provider red, the answering provider green.
 - The empty chat offers one-click starters: a normal question, *Try it with Groq down* (`key_1=429`), *Try it with everything down* (`*=429`), and after **New chat**, the previous first message again, which comes back as a cache hit.
-- *Session settings* (the gear icon) holds the system prompt and a failover selector that sends `X-Simulate-Failure` with every message.
+- The **system prompt** field sits in the chat header (`system-prompt-input`, always visible). The gear icon opens a failover selector that sends `X-Simulate-Failure` with every message.
 
 **Automated:** `cd backend && python -m pytest -q` covers health, response shape, cache hit (identical text, same tokens, `key_id` null, faster), per-key models across providers, cache misses for different messages and system prompts, multi-turn history sent to the LLM, history surviving an app restart, per-request tokens, failover on simulated 429/500/502/503 and on real LiteLLM `RateLimitError`, 503 with nothing written, simulation off when disabled, 422 cases (missing, empty, whitespace, over 4000 chars, malformed JSON, bad header) and the 404.
 

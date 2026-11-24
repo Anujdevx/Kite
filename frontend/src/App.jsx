@@ -108,7 +108,7 @@ export default function App() {
   }
 
   function resetSession() {
-    const first = messages.find((m) => m.role === 'user')
+    const first = messages.find((m, i) => m.role === 'user' && messages[i + 1]?.role === 'assistant')
     if (first) setLastFirst(first.content)
     setSessionId(newSessionId())
     setMessages([])
@@ -140,6 +140,15 @@ export default function App() {
       <section className="panel">
         <div className="bar" title={`session ${sessionId}`}>
           <HealthBadge health={health} />
+          <input
+            className="sys"
+            data-testid="system-prompt-input"
+            value={systemPrompt}
+            onChange={(e) => setSystemPrompt(e.target.value)}
+            placeholder="System prompt (optional)"
+            aria-label="System prompt for this session"
+            maxLength={4000}
+          />
           <div className="bar-actions">
             <button className="ghost" onClick={resetSession} disabled={pending}>New chat</button>
             <button
@@ -156,16 +165,6 @@ export default function App() {
 
         {showSettings && (
           <div className="settings">
-            <label>
-              <span>System prompt <em>optional, for this session</em></span>
-              <textarea
-                data-testid="system-prompt-input"
-                rows={2}
-                value={systemPrompt}
-                onChange={(e) => setSystemPrompt(e.target.value)}
-                placeholder="You are a helpful, concise assistant."
-              />
-            </label>
             <label>
               <span>Failover test <em>sends X-Simulate-Failure with each message</em></span>
               <select value={simulate} onChange={(e) => setSimulate(e.target.value)}>
