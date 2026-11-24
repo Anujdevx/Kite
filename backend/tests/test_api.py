@@ -206,11 +206,11 @@ def test_real_provider_5xx_on_every_key_is_503(client, fake_provider):
 
 
 def test_per_key_models_across_providers(client, monkeypatch):
-    monkeypatch.setenv("LLM_MODELS", "groq/llama-3.3-70b-versatile,openrouter/meta-llama/llama-3.3-70b-instruct:free")
+    monkeypatch.setenv("LLM_MODELS", "groq/llama-3.3-70b-versatile,nvidia_nim/meta/llama-3.3-70b-instruct")
     first = chat(client, sid(), msg()).json()["metadata"]
     assert (first["key_id"], first["model"]) == ("key_1", "groq/llama-3.3-70b-versatile")
     over = chat(client, sid(), msg(), headers={"X-Simulate-Failure": "key_1=503"}).json()["metadata"]
-    assert (over["key_id"], over["model"]) == ("key_2", "openrouter/meta-llama/llama-3.3-70b-instruct:free")
+    assert (over["key_id"], over["model"]) == ("key_2", "nvidia_nim/meta/llama-3.3-70b-instruct")
 
 
 def test_mismatched_llm_models_fails_fast(monkeypatch):

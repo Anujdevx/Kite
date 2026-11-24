@@ -1,6 +1,6 @@
 # Lyftr AI Chat: LLM chatbot with key failover and response caching
 
-React frontend, FastAPI backend, LiteLLM gateway (key pool + built-in cache), SQLite history. Each key can point at a different provider/model, so failover also survives a whole-provider outage.
+React frontend, FastAPI backend, LiteLLM gateway (key pool + built-in cache), SQLite history. Each key can point at a different provider/model, so failover also survives a whole-provider outage. Deployed with open-weight Llama 3.3 70B on Groq (key_1) and NVIDIA NIM (key_2).
 
 ```
 Browser (React, Vite)                 FastAPI backend                         Providers
@@ -8,8 +8,8 @@ Browser (React, Vite)                 FastAPI backend                         Pr
 │ chat-input           │ ───────────► │ validate (Pydantic) ─► 422       │
 │ assistant-message    │              │ load history (SQLite)            │
 │  meta-source/model/  │ ◄─────────── │ messages = system+history+new    │
-│  latency/tokens      │   reply +    │ for key_1..key_n:                │  key_1 ─► provider A
-└──────────────────────┘   metadata   │   litellm.acompletion(cache on)  │  key_2 ─► provider B
+│  latency/tokens      │   reply +    │ for key_1..key_n:                │  key_1 ─► Groq      
+└──────────────────────┘   metadata   │   litellm.acompletion(cache on)  │  key_2 ─► NVIDIA NIM
                                       │   error? next key                │
                                       │ all failed ─► 503                │
                                       │ save user+assistant (1 txn)      │
@@ -65,7 +65,7 @@ LIVE_LLM_TESTS=1 python -m pytest -q -k live
 | Variable | Meaning |
 |---|---|
 | `LLM_API_KEYS` | Comma-separated key pool, at least 2. Ids are `key_1`, `key_2`, ... in this order |
-| `LLM_MODELS` | Optional: one LiteLLM model per key, same order as `LLM_API_KEYS` (e.g. `groq/...,openrouter/...`). Startup fails if the counts differ |
+| `LLM_MODELS` | Optional: one LiteLLM model per key, same order as `LLM_API_KEYS` (e.g. `groq/...,nvidia_nim/...`). Startup fails if the counts differ |
 | `LLM_MODEL` | Model for every key when `LLM_MODELS` is empty, default `gemini/gemini-2.5-flash-lite` |
 | `DATABASE_URL` | SQLite location, e.g. `sqlite:////data/app.db` |
 | `ALLOWED_ORIGINS` | Comma-separated CORS origins |
