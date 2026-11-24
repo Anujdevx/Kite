@@ -1,0 +1,10 @@
+# Vercel only needs frontend/; never upload secrets or local state.
+.env
+.env.*
+!.env.example
+backend/
+notes/
+**/node_modules
+**/dist
+*.db
+.vercel

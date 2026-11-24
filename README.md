@@ -21,8 +21,8 @@ Browser (React, Vite)                 FastAPI backend                         Pr
 
 ## 1. Live URLs
 
-- Frontend: `[add after deploy]`
-- Backend: `[add after deploy]` (try `/health`)
+- Frontend (Vercel): https://kite-wheat.vercel.app
+- Backend (Render): https://kite-backend-mjw3.onrender.com (try [`/health`](https://kite-backend-mjw3.onrender.com/health)). It's on Render's free plan, so the first request after 15 idle minutes can take about 50 s while it wakes up.
 - Repository: https://github.com/Anujdevx/Kite
 
 ## 2. Run locally: with Docker and without
