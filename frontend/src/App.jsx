@@ -231,7 +231,7 @@ export default function App() {
               <div className="stack">
                 <div className="bubble typing" aria-label="Kite is typing">
                   <i /><i /><i />
-                  {elapsed >= 3000 && <span className="clock">{Math.floor(elapsed / 1000)}s</span>}
+                  <span className="clock">{(elapsed / 1000).toFixed(1)}s</span>
                 </div>
               </div>
             </div>

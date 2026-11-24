@@ -152,7 +152,7 @@ curl -s -X POST $B/chat -H 'Content-Type: application/json' -d '{"session_id":"s
 ## 6. Bonus features (if any)
 
 - **Key-pool rail:** a live map of cache, then key_1, then key_2, showing which one answered each request. It makes failover and caching visible without reading JSON.
-- **Per-reply failover note** built from `metadata.attempts`, a **cache label**, a **wait timer** after 3 s, and a **raw JSON inspector**. Each one displays real data from the response; nothing is simulated in the UI. Technical details (session id, key ids, model ids) are in tooltips rather than on screen.
+- **Per-reply failover note** built from `metadata.attempts`, a **cache label**, a **live wait timer** (browser-measured), and a **raw JSON inspector**. Each one displays real data from the response; nothing is simulated in the UI. Technical details (session id, key ids, model ids) are in tooltips rather than on screen.
 - **One-click demo starters** for a normal question, a Groq outage, a total outage, and the same first message again to show a cache hit.
 - **Failover test selector** in session settings (`X-Simulate-Failure` without curl), plus a health badge.
 - **Per-session system prompt** (`system-prompt-input`), stored in SQLite so later turns keep it.
