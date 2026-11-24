@@ -146,7 +146,7 @@ curl -s -X POST $B/chat -H 'Content-Type: application/json' -d '{"session_id":"s
 
 ## 5. Setup Used: your editor and AI tools
 
-- Editor: `[fill in]`
+- Editor: VS Code
 - AI tools: Claude Code for scaffolding, tests and docs. I reviewed and directed the design decisions above.
 
 ## 6. Bonus features (if any)
