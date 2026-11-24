@@ -8,10 +8,8 @@ const newSessionId = () => 's-' + crypto.randomUUID().slice(0, 8)
 const SIMULATIONS = ['', 'key_1=429', 'key_1=500', 'key_1=429,key_2=500', '*=429']
 
 const now = () => new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }).toLowerCase()
-const secs = (ms) => (ms >= 1000 ? `${(ms / 1000).toFixed(1)} s` : `${ms} ms`)
 const PROVIDERS = { groq: 'Groq', nvidia_nim: 'NVIDIA NIM', gemini: 'Gemini', openrouter: 'OpenRouter', openai: 'OpenAI' }
 const provider = (model = '') => PROVIDERS[model.split('/')[0]] || model.split('/')[0]
-const shortModel = (model = '') => model.split('/').slice(-1)[0]
 
 // Models answer in Markdown. Render the common inline bits as React elements (no HTML injection);
 // lists and line breaks already read fine thanks to `white-space: pre-wrap`.
@@ -44,7 +42,6 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false)
   const [route, setRoute] = useState(null) // what the last request did, for the key-pool rail
   const [lastFirst, setLastFirst] = useState('') // first message of the previous chat, for the cache demo chip
-  const liveLatencies = useRef([]) // live (non-cache) latencies on this page, for the cache comparison
   const logRef = useRef(null)
   const inputRef = useRef(null)
 
@@ -88,12 +85,8 @@ export default function App() {
       if (res.ok) {
         const md = body.metadata
         const cached = md.resolution_source === 'LLM_CACHE'
-        const liveAvg = liveLatencies.current.length
-          ? Math.round(liveLatencies.current.reduce((a, b) => a + b, 0) / liveLatencies.current.length)
-          : null
-        if (!cached) liveLatencies.current.push(md.latency_ms)
         setRoute({ kind: cached ? 'cache' : 'live', attempts: md.attempts || [], answered: md.key_id, simulated: !!sim })
-        setMessages((m) => [...m, { role: 'assistant', content: body.reply, metadata: md, raw: body, liveAvg, time: now() }])
+        setMessages((m) => [...m, { role: 'assistant', content: body.reply, metadata: md, raw: body, time: now() }])
       } else {
         setRoute(res.status === 503 ? { kind: 'down' } : null)
         setMessages((m) => [...m, { role: 'error', content: errorText(res.status, body), status: res.status, time: now() }])
@@ -124,7 +117,6 @@ export default function App() {
 
   const keys = health?.keys || []
   const k1 = provider(keys[0]?.model) || 'key_1'
-  const maxTokens = Math.max(1, ...messages.filter((m) => m.metadata).map((m) => m.metadata.input_tokens + m.metadata.output_tokens))
 
   return (
     <div className="page">
@@ -146,10 +138,7 @@ export default function App() {
       <Rail keys={keys} route={route} />
 
       <section className="panel">
-        <div className="bar">
-          <span className="session">
-            session <code>{sessionId}</code>
-          </span>
+        <div className="bar" title={`session ${sessionId}`}>
           <HealthBadge health={health} />
           <div className="bar-actions">
             <button className="ghost" onClick={resetSession} disabled={pending}>New chat</button>
@@ -193,24 +182,23 @@ export default function App() {
             <div className="row bot">
               <BotAvatar />
               <div className="stack">
-                <div className="bubble">Hey! Ask me anything, or try one of these:</div>
+                <div className="bubble">Hi, I'm Kite. Ask me anything.</div>
                 <div className="starters">
                   {lastFirst && (
                     <button className="starter cache" onClick={() => send(lastFirst, '')}>
-                      <b>Ask again</b> “{lastFirst.length > 40 ? lastFirst.slice(0, 40) + '…' : lastFirst}” <span>expect a cache hit</span>
+                      Ask “{lastFirst.length > 32 ? lastFirst.slice(0, 32) + '…' : lastFirst}” again
                     </button>
                   )}
                   <button className="starter" onClick={() => send('Explain what an API rate limit is in two sentences.', '')}>
-                    <b>Ask</b> what an API rate limit is
+                    What's an API rate limit?
                   </button>
                   <button className="starter warn" onClick={() => send('Give me one fun fact about kites.', 'key_1=429')}>
-                    <b>Simulate a {k1} outage</b> <span>key_1=429</span>
+                    Try it with {k1} down
                   </button>
                   <button className="starter bad" onClick={() => send('Hello!', '*=429')}>
-                    <b>Simulate a total outage</b> <span>*=429</span>
+                    Try it with everything down
                   </button>
                 </div>
-                {!lastFirst && <span className="time">Tip: after a reply, start a New chat and send the same first message.</span>}
               </div>
             </div>
           )}
@@ -224,7 +212,7 @@ export default function App() {
                 <div className="avatar me-avatar" aria-hidden="true">You</div>
               </div>
             ) : m.role === 'assistant' ? (
-              <AssistantMessage key={i} m={m} maxTokens={maxTokens} />
+              <AssistantMessage key={i} m={m} keys={keys} />
             ) : (
               <div key={i} className="row bot" role="alert">
                 <BotAvatar error />
@@ -243,7 +231,7 @@ export default function App() {
               <div className="stack">
                 <div className="bubble typing" aria-label="Kite is typing">
                   <i /><i /><i />
-                  <span className="clock">{secs(elapsed)}</span>
+                  {elapsed >= 3000 && <span className="clock">{Math.floor(elapsed / 1000)}s</span>}
                 </div>
               </div>
             </div>
@@ -271,56 +259,42 @@ export default function App() {
   )
 }
 
-function AssistantMessage({ m, maxTokens }) {
+function AssistantMessage({ m, keys }) {
   const [inspect, setInspect] = useState(false)
   const md = m.metadata
   const cached = md.resolution_source === 'LLM_CACHE'
   const attempts = md.attempts || []
+  const nameOf = (id) => provider(keys.find((k) => k.key_id === id)?.model) || id
   return (
     <div className="row bot" data-testid="assistant-message">
       <BotAvatar />
       <div className="stack">
-        {cached && (
-          <span className="replay">
-            <BoltIcon /> replayed from cache in {md.latency_ms} ms
-            {m.liveAvg != null ? ` · live replies on this page average ${secs(m.liveAvg)}` : ''}
-          </span>
-        )}
         <div className={`bubble ${cached ? 'cached' : ''}`}><Rich text={m.content} /></div>
 
-        <div className="trace" aria-label="Request path">
-          {cached ? (
-            <span className="hop cache">cache ✓</span>
-          ) : (
-            <>
-              {attempts.map((a) => (
-                <span key={a.key_id} className="hop-wrap">
-                  <span className="hop fail" title={a.error}>{a.key_id} ✕ {a.status ?? a.error}</span>
-                  <span className="arrow" aria-hidden="true">→</span>
-                </span>
-              ))}
-              <span className="hop ok">{md.key_id} ✓</span>
-            </>
-          )}
+        {/* One quiet line. The data-testid values are the API contract and must stay visible. */}
+        <div className="meta">
+          <span data-testid="meta-source" className={`src ${cached ? 'cache' : 'live'}`}>{md.resolution_source}</span>
+          <span className="sep">·</span>
+          <span data-testid="meta-model" title={md.model}>{md.model}</span>
+          <span className="sep">·</span>
+          <span data-testid="meta-latency">{md.latency_ms} ms</span>
+          <span className="sep">·</span>
+          <span title="tokens for this request only">
+            <span data-testid="meta-input-tokens">{md.input_tokens}</span> in / <span data-testid="meta-output-tokens">{md.output_tokens}</span> out
+          </span>
         </div>
 
-        <dl className="meta">
-          <div className={`chip ${cached ? 'cache' : 'live'}`}><dt>source</dt><dd data-testid="meta-source">{md.resolution_source}</dd></div>
-          <div className="chip"><dt>model</dt><dd data-testid="meta-model">{md.model}</dd></div>
-          <div className="chip"><dt>latency</dt><dd data-testid="meta-latency">{md.latency_ms} ms</dd></div>
-          <div className="chip"><dt>in</dt><dd data-testid="meta-input-tokens">{md.input_tokens}</dd></div>
-          <div className="chip"><dt>out</dt><dd data-testid="meta-output-tokens">{md.output_tokens}</dd></div>
-        </dl>
-
-        <div className="tokbar" title={`This request only: ${md.input_tokens} in, ${md.output_tokens} out`}>
-          <span className="in" style={{ width: `${(md.input_tokens / maxTokens) * 100}%` }} />
-          <span className="out" style={{ width: `${(md.output_tokens / maxTokens) * 100}%` }} />
-        </div>
+        {cached && <span className="note cache">Instant answer from cache</span>}
+        {!cached && attempts.length > 0 && (
+          <span className="note warn">
+            {attempts.map((a) => `${nameOf(a.key_id)} failed (${a.status ?? a.error})`).join(', ')}, answered by {nameOf(md.key_id)}
+          </span>
+        )}
 
         <div className="foot">
           <span className="time">{m.time}</span>
-          <button className="inspect" onClick={() => setInspect((v) => !v)} aria-expanded={inspect}>
-            {inspect ? 'hide JSON' : '{ } inspect'}
+          <button className="inspect" onClick={() => setInspect((v) => !v)} aria-expanded={inspect} title="Show the raw API response">
+            {inspect ? 'hide' : '{ }'}
           </button>
         </div>
         {inspect && <pre className="json">{JSON.stringify(m.raw, null, 2)}</pre>}
@@ -332,9 +306,9 @@ function AssistantMessage({ m, maxTokens }) {
 /* The key pool as a kite string: cache first, then each key in failover order. */
 function Rail({ keys, route }) {
   if (!keys.length) return null
-  const failed = new Map((route?.attempts || []).map((a) => [a.key_id, a.status ?? a.error]))
-  const cacheState =
-    route?.kind === 'cache' ? 'hit' : route?.kind === 'live' ? (route.simulated ? 'skip' : 'miss') : route?.kind === 'down' ? 'skip' : ''
+  const failed = new Set((route?.attempts || []).map((a) => a.key_id))
+  const nameOf = (id) => provider(keys.find((k) => k.key_id === id)?.model) || id
+  const cacheState = route?.kind === 'cache' ? 'hit' : ''
   const keyState = (id) =>
     route?.kind === 'down' ? 'fail'
     : route?.kind !== 'live' ? ''
@@ -342,24 +316,20 @@ function Rail({ keys, route }) {
     : route.answered === id ? 'ok'
     : ''
   const caption = {
-    pending: 'request in flight…',
-    cache: 'answered from cache, no key used',
-    live: route?.attempts?.length ? `${route.attempts.length} key failed, ${route?.answered} answered` : `${route?.answered} answered`,
-    down: 'every key failed (503)',
-  }[route?.kind] || 'waiting for a message'
+    pending: 'Thinking…',
+    cache: 'Answered from cache',
+    live: route?.attempts?.length
+      ? `${route.attempts.map((a) => nameOf(a.key_id)).join(', ')} failed, ${nameOf(route?.answered)} answered`
+      : `${nameOf(route?.answered)} answered`,
+    down: 'Every provider is down',
+  }[route?.kind] || ''
 
   return (
-    <aside className={`rail ${route?.kind === 'pending' ? 'busy' : ''}`} aria-label="Key pool status">
-      <span className="rail-title">key pool</span>
+    <aside className={`rail ${route?.kind === 'pending' ? 'busy' : ''}`} aria-label="Which provider answered">
       <div className="nodes">
-        <Node state={cacheState} label="cache" sub={cacheState === 'skip' ? 'skipped' : cacheState === 'miss' ? 'miss' : cacheState === 'hit' ? 'hit' : 'in-memory'} />
+        <Node state={cacheState} label="Cache" />
         {keys.map((k) => (
-          <Node
-            key={k.key_id}
-            state={keyState(k.key_id)}
-            label={k.key_id}
-            sub={keyState(k.key_id) === 'fail' && failed.get(k.key_id) ? `✕ ${failed.get(k.key_id)}` : `${provider(k.model)} · ${shortModel(k.model)}`}
-          />
+          <Node key={k.key_id} state={keyState(k.key_id)} label={provider(k.model)} title={`${k.key_id} · ${k.model}`} />
         ))}
       </div>
       <span className="rail-caption">{caption}</span>
@@ -367,24 +337,21 @@ function Rail({ keys, route }) {
   )
 }
 
-function Node({ state, label, sub }) {
+function Node({ state, label, title }) {
   return (
-    <div className={`node ${state}`}>
+    <div className={`node ${state}`} title={title}>
       <span className="dot" />
-      <span className="node-text">
-        <b>{label}</b>
-        <small>{sub}</small>
-      </span>
+      <span className="node-text">{label}</span>
     </div>
   )
 }
 
 function HealthBadge({ health }) {
-  if (!health) return <span className="badge">checking…</span>
-  if (health.status !== 'ok') return <span className="badge down">backend unavailable</span>
+  if (!health) return <span className="badge">Connecting…</span>
+  if (health.status !== 'ok') return <span className="badge down">Offline</span>
   return (
-    <span className="badge ok">
-      {health.keys_configured} keys · cache {health.cache_enabled ? 'on' : 'off'}
+    <span className="badge ok" title={`${health.keys_configured} keys · cache ${health.cache_enabled ? 'on' : 'off'}`}>
+      Online
     </span>
   )
 }
@@ -406,14 +373,6 @@ function KiteIcon() {
       <path d="M12 2l6 7-6 9-6-9z" fill="currentColor" fillOpacity=".18" />
       <path d="M6 9h12M12 2v16" />
       <path d="M12 18c-1 2 1 2.5 0 4" strokeLinecap="round" />
-    </svg>
-  )
-}
-
-function BoltIcon() {
-  return (
-    <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor" aria-hidden="true">
-      <path d="M13 2L4 14h7l-1 8 9-12h-7z" />
     </svg>
   )
 }

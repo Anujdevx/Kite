@@ -137,10 +137,9 @@ curl -s -X POST $B/chat -H 'Content-Type: application/json' -d '{"session_id":"s
 ```
 
 **In the UI:**
-- Every assistant reply shows `source`, `model`, `latency`, `in`/`out` tokens, a token bar, and the path the request took (`key_1 ✓`, `key_1 ✕ 429 → key_2 ✓` or `cache ✓`). `{ } inspect` shows the raw JSON.
-- The **key-pool rail** (right edge, or a strip above the chat on narrow screens) lights up whatever answered the last request: the cache node amber on a hit, a failed key red with its status code, and the answering key green.
-- The empty chat offers one-click starters: a normal question, *Simulate a Groq outage* (`key_1=429`), *Simulate a total outage* (`*=429`), and after **New chat**, *Ask again* with the previous first message, which should come back as a cache hit.
-- Cache hits are labelled "replayed from cache in N ms" and compared with the average live latency on the page.
+- Every assistant reply has one quiet metadata line: `source · model · latency · in / out tokens`. A cache hit adds "Instant answer from cache"; a failover adds e.g. "Groq failed (429), answered by NVIDIA NIM". `{ }` shows the raw JSON.
+- The **provider rail** (right edge, or a strip above the chat on narrow screens) lights up whatever answered the last request: Cache amber, a failed provider red, the answering provider green.
+- The empty chat offers one-click starters: a normal question, *Try it with Groq down* (`key_1=429`), *Try it with everything down* (`*=429`), and after **New chat**, the previous first message again, which comes back as a cache hit.
 - *Session settings* (the gear icon) holds the system prompt and a failover selector that sends `X-Simulate-Failure` with every message.
 
 **Automated:** `cd backend && python -m pytest -q` covers health, response shape, cache hit (identical text, same tokens, `key_id` null, faster), per-key models across providers, cache misses for different messages and system prompts, multi-turn history sent to the LLM, history surviving an app restart, per-request tokens, failover on simulated 429/500/502/503 and on real LiteLLM `RateLimitError`, 503 with nothing written, simulation off when disabled, 422 cases (missing, empty, whitespace, over 4000 chars, malformed JSON, bad header) and the 404.
@@ -153,7 +152,7 @@ curl -s -X POST $B/chat -H 'Content-Type: application/json' -d '{"session_id":"s
 ## 6. Bonus features (if any)
 
 - **Key-pool rail:** a live map of cache, then key_1, then key_2, showing which one answered each request. It makes failover and caching visible without reading JSON.
-- **Per-reply request path** (`metadata.attempts`), **cache replay label** with a live-latency comparison, **per-request token bar**, **client-side stopwatch** while waiting, and a **raw JSON inspector**. Each one displays real data from the response; nothing is simulated in the UI.
+- **Per-reply failover note** built from `metadata.attempts`, a **cache label**, a **wait timer** after 3 s, and a **raw JSON inspector**. Each one displays real data from the response; nothing is simulated in the UI. Technical details (session id, key ids, model ids) are in tooltips rather than on screen.
 - **One-click demo starters** for a normal question, a Groq outage, a total outage, and the same first message again to show a cache hit.
 - **Failover test selector** in session settings (`X-Simulate-Failure` without curl), plus a health badge.
 - **Per-session system prompt** (`system-prompt-input`), stored in SQLite so later turns keep it.
