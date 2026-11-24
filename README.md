@@ -23,7 +23,7 @@ Browser (React, Vite)                 FastAPI backend                         Pr
 
 - Frontend: `[add after deploy]`
 - Backend: `[add after deploy]` (try `/health`)
-- Repository: `[add after push]`
+- Repository: https://github.com/Anujdevx/Kite
 
 ## 2. Run locally: with Docker and without
 
