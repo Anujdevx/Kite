@@ -79,7 +79,7 @@ export default function App() {
     <div className="shell">
       <header className="top">
         <div>
-          <h1>Lyftr Chat</h1>
+          <h1>Kite</h1>
           <p className="sub">
             session <code>{sessionId}</code>
             <button className="link" onClick={resetSession} disabled={pending}>new session</button>

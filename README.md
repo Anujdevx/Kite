@@ -1,4 +1,6 @@
-# Lyftr AI Chat: LLM chatbot with key failover and response caching
+# Kite: LLM chatbot with key failover and response caching
+
+Built for the Lyftr AI full-stack assignment.
 
 React frontend, FastAPI backend, LiteLLM gateway (key pool + built-in cache), SQLite history. Each key can point at a different provider/model, so failover also survives a whole-provider outage. Deployed with open-weight models on two providers: `openai/gpt-oss-120b` on Groq (key_1) and `nvidia/nemotron-3.5-lightning-30b-a3b` on NVIDIA NIM (key_2). Both are reasoning models, so `output_tokens` includes their reasoning tokens: that is what the provider bills, and it is reported as-is.
 

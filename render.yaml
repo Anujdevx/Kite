@@ -1,7 +1,7 @@
 # Render Blueprint for the backend (New > Blueprint, point it at this repo).
 services:
   - type: web
-    name: lyftr-chat-backend
+    name: kite-backend
     runtime: docker
     plan: free
     dockerfilePath: ./backend/Dockerfile
@@ -11,7 +11,7 @@ services:
       - key: LLM_API_KEYS
         sync: false # you type the real keys in the Render dashboard
       - key: ALLOWED_ORIGINS
-        sync: false # your Vercel URL, e.g. https://lyftr-chat.vercel.app
+        sync: false # your Vercel URL, e.g. https://kite-chat.vercel.app
       - key: LLM_MODELS
         sync: false # one LiteLLM model per key, same order as LLM_API_KEYS
       - key: DATABASE_URL

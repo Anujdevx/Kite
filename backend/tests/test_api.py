@@ -13,6 +13,9 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path}/app.db")
     monkeypatch.setenv("LLM_API_KEYS", "test-key-1,test-key-2")
     monkeypatch.setenv("ENABLE_FAILURE_SIMULATION", "true")
+    # LiteLLM auto-loads ../.env on import; pin the model config so local keys/models never leak in.
+    monkeypatch.delenv("LLM_MODELS", raising=False)
+    monkeypatch.setenv("LLM_MODEL", "gemini/gemini-2.5-flash-lite")
     from app.main import app
 
     with TestClient(app) as c:
